@@ -137,26 +137,69 @@ def update_3d_plot(normal_points, smoothened_points, ax, lines, consider_frame_a
     ax.set_zlim([mid_z - max_range, mid_z + max_range])
 
 
-def visualize_trajectory(plot_2d=True, plot_3d=False, plot_vel=False):
+def update_plots(live_plot, plot_2d, plot_3d, plot_vel, 
+                 trajectory_points, PID_pos_points, 
+                 velocity_points, smooth_vel_points, 
+                 time_steps, 
+                 fig_2d, fig_traj,
+                 pos_axs, pos_lines, 
+                 vel_axs, vel_lines, 
+                 ax_3d, lines_3d, smooth_vel_scaling):
+    if plot_2d:
+        update_2d_plots(trajectory_points, PID_pos_points, time_steps, pos_axs, pos_lines)
+        if plot_vel:
+            update_2d_plots(velocity_points, np.array(smooth_vel_points)*smooth_vel_scaling, time_steps, vel_axs, vel_lines)
+
+        plt.figure(fig_2d)
+        plt.draw()
+        plt.pause(0.001)  # A short pause to allow for plot updates
+
+    if plot_3d:    
+        # update_3d_plot(trajectory_points, smooth_traj_points, ax_3d, lines_3d)
+        update_3d_plot(trajectory_points, PID_pos_points, ax_3d, lines_3d)
+
+        plt.figure(fig_traj)
+        plt.draw()
+        plt.pause(0.001)  # A short pause to allow for plot updates
+    
+    if not live_plot:
+        plt.show()
+
+
+def visualize_trajectory(plot_2d=True, plot_3d=False, plot_vel=False, live_plot=True):
     if not (plot_3d or plot_2d):
         return
-
-    if plot_2d and (plot_vel or plot_3d):
-        freq = 10 # Hz
-    elif plot_2d:
-        freq = 15 # Hz
-    else:
-        freq = 50 # Hz
+    
+    max_loop_time = 3           # seconds
+    control_freq = 300          # Hz
+    max_plot_points = max_loop_time * control_freq
+    
+    if live_plot:
+        if plot_2d and (plot_vel or plot_3d):
+            live_plot_freq = 10      # Hz
+        elif plot_2d:
+            live_plot_freq = 15      # Hz
+        else:
+            live_plot_freq = 50      # Hz
+        
+        max_loop_time = 100
+        control_freq = live_plot_freq
+        max_plot_points = 100
 
     if plot_3d:
         fig_traj, ax_3d, lines_3d = get_3d_traj_fig_axs_lines()
+    else:
+        fig_traj, ax_3d, lines_3d = None, None, None
+
     if plot_2d:
         fig_2d, pos_axs, pos_lines, vel_axs, vel_lines = get_2d_fig_axs_lines(plot_vel)
+    else:
+        fig_2d, pos_axs, pos_lines, vel_axs, vel_lines = None, None, None, None, None
         
     # List to store the trajectory and velocities
     trajectory_points = []
     smooth_traj_points = []
-    PID_pos_points = []
+    PID_pos_points = [np.zeros(3)]
     velocity_points = [np.zeros(3)]
     smooth_vel_points = [np.zeros(3)]
     
@@ -168,9 +211,9 @@ def visualize_trajectory(plot_2d=True, plot_3d=False, plot_vel=False):
         initial_pose = controller.get_pose_matrix()
 
     initial_position = frame_1_to_2 @ initial_pose[:3, 3]
-    trajectory_points.append(initial_position)
-    smooth_traj_points.append(initial_position)
-    PID_pos_points.append(initial_position)
+    trajectory_points.append(np.zeros(3))
+    smooth_traj_points.append(np.zeros(3))
+    # PID_pos_points.append(initial_position)
     last_position = initial_position
 
     if plot_3d:
@@ -184,9 +227,12 @@ def visualize_trajectory(plot_2d=True, plot_3d=False, plot_vel=False):
     alpha_vel = 0.8
     time_step = 0
     time_steps = [time_step]
-    time.sleep(1/freq)
-    elapsed_time = 1/freq
-    
+    time.sleep(1/control_freq)
+    elapsed_time = 1/control_freq
+    plot_elapsed_time = 1/control_freq
+    avg_actual_control_freq = 0
+    avg_possible_control_freq = 0
+
     smooth_vel_scaling = 2
     error_sum = 0
     prev_error = 0
@@ -199,7 +245,11 @@ def visualize_trajectory(plot_2d=True, plot_3d=False, plot_vel=False):
     Ki =  0.4 * Ku/Tu  # 1.2 * Ku/Tu   # 0.54 * Ku/Tu   
     Kd =  0             # 3 * Ku*Tu/40  # 0              
 
-    while True:
+    overall_elapsed_time = 0
+    i = 0
+    while overall_elapsed_time < max_loop_time:
+        print(f"i={i}: len(PID_pos_points): {len(PID_pos_points)}, last_PID_pos: {PID_pos_points[-1]}")
+
         start_time = time.time()
 
         pose_matrix = controller.get_pose_matrix()
@@ -207,33 +257,34 @@ def visualize_trajectory(plot_2d=True, plot_3d=False, plot_vel=False):
             continue
 
         current_position = frame_1_to_2 @ pose_matrix[:3, 3]
-        current_velocity = (current_position - last_position) / (1/freq)
-        EMA_position = alpha_traj * smooth_traj_points[-1] + (1-alpha_traj) * current_position
+        current_rel_position = current_position - initial_position
+        current_velocity = (current_rel_position - last_position) / (1/control_freq)
+        EMA_position = alpha_traj * smooth_traj_points[-1] + (1-alpha_traj) * current_rel_position
         EMA_velocity = alpha_vel * smooth_vel_points[-1] + (1-alpha_vel) * current_velocity
 
         # Older tracking approach using smooth vel
-        # vel_EMA_implied_pos = smooth_vel_implied_pos_points[-1] + smooth_vel_scaling * EMA_velocity * (1/freq)
+        # vel_EMA_implied_pos = smooth_vel_implied_pos_points[-1] + smooth_vel_scaling * EMA_velocity * (1/control_freq)
 
         # Tracking position using PID
-        curr_error = current_position - PID_pos_points[-1]
+        curr_error = current_rel_position - PID_pos_points[-1]
         error_sum += curr_error
-        error_I = error_sum * (1/freq)
-        error_D = (curr_error - prev_error) / (1/freq)
+        error_I = error_sum * (1/control_freq)
+        error_D = (curr_error - prev_error) / (1/control_freq)
         
         PID_position = Kp * curr_error + Ki * error_I + Kd * error_D
         prev_error = curr_error
 
-        trajectory_points.append(current_position)
+        trajectory_points.append(current_rel_position)
         smooth_traj_points.append(EMA_position)
         velocity_points.append(current_velocity)
         smooth_vel_points.append(EMA_velocity)
         PID_pos_points.append(PID_position)
-        last_position = current_position
+        last_position = current_rel_position
 
-        time_step += max(elapsed_time, 1/freq)
+        time_step += max(plot_elapsed_time, 1/control_freq)
         time_steps.append(time_step)
 
-        if len(trajectory_points) > 100:
+        if len(trajectory_points) > max_plot_points:
             trajectory_points.pop(0)
             smooth_traj_points.pop(0)
             velocity_points.pop(0)
@@ -241,28 +292,39 @@ def visualize_trajectory(plot_2d=True, plot_3d=False, plot_vel=False):
             PID_pos_points.pop(0)
             time_steps.pop(0)
 
-
-        if plot_2d:
-            update_2d_plots(trajectory_points, PID_pos_points, time_steps, pos_axs, pos_lines)
-            if plot_vel:
-                update_2d_plots(velocity_points, np.array(smooth_vel_points)*smooth_vel_scaling, time_steps, vel_axs, vel_lines)
-
-            plt.figure(fig_2d)
-            plt.draw()
-            plt.pause(0.001)  # A short pause to allow for plot updates
-
-        if plot_3d:    
-            # update_3d_plot(trajectory_points, smooth_traj_points, ax_3d, lines_3d)
-            update_3d_plot(trajectory_points, PID_pos_points, ax_3d, lines_3d)
- 
-            plt.figure(fig_traj)
-            plt.draw()
-            plt.pause(0.001)  # A short pause to allow for plot updates
-
-        # Wait to maintain approximately refresh rate of <freq> Hz
+        if live_plot and plot_elapsed_time > 1/live_plot_freq:
+            plot_elapsed_time = 0
+            update_plots(live_plot, plot_2d, plot_3d, plot_vel,
+                            trajectory_points, PID_pos_points,
+                            velocity_points, smooth_vel_points,
+                            time_steps,
+                            fig_2d, fig_traj,
+                            pos_axs, pos_lines,
+                            vel_axs, vel_lines,
+                            ax_3d, lines_3d, smooth_vel_scaling)
+        
+        # Wait to maintain approximately refresh rate of <control_freq> Hz
         elapsed_time = time.time() - start_time
-        print(f"Plot update max freq: {1/elapsed_time} Hz")
-        time.sleep(max(1/freq - elapsed_time, 0))
+        time.sleep(max(1/control_freq - elapsed_time, 0))
+        final_elapsed_time = time.time() - start_time
+
+        plot_elapsed_time += final_elapsed_time
+        overall_elapsed_time += final_elapsed_time
+        i += 1
+        
+        avg_possible_control_freq = (avg_possible_control_freq * (i-1) + 1/elapsed_time) / i
+        avg_actual_control_freq = (avg_actual_control_freq * (i-1) + 1/final_elapsed_time) / i
+    print(f"Possible max control freq: {avg_possible_control_freq} Hz, Actual control freq: {avg_actual_control_freq} Hz")
+
+    if not live_plot:
+        update_plots(live_plot, plot_2d, plot_3d, plot_vel,
+                        trajectory_points, PID_pos_points,
+                        velocity_points, smooth_vel_points,
+                        time_steps,
+                        fig_2d, fig_traj,
+                        pos_axs, pos_lines,
+                        vel_axs, vel_lines,
+                        ax_3d, lines_3d, smooth_vel_scaling)
 
 
 def get_transforms(vive_base_direction="perpendicular"):
@@ -495,19 +557,28 @@ def test_controller_buttons():
 if __name__ == "__main__":    
     get_transforms()
 
+
+    ### Script usage examples: 
+    ### python vr_test.py traj3d 
+    ### python vr_test.py fast trajall
+
     test_type = "pose"
     if len(sys.argv) > 1:
         test_type = sys.argv[-1]
 
+    live_plot = True
+    if len(sys.argv) > 2:
+        live_plot = (sys.argv[-2] != "fast")
+
     if test_type in ["traj3d", "traj"]:
         print("\nRunning 3D trajectory visualization\n")
-        visualize_trajectory(plot_3d=True, plot_2d=False)
+        visualize_trajectory(plot_3d=True, plot_2d=False, live_plot=live_plot)
     elif test_type == "traj2d":
         print("\nRunning position and velocity visualization\n")
-        visualize_trajectory(plot_3d=False, plot_2d=True)
+        visualize_trajectory(plot_3d=False, plot_2d=True, live_plot=live_plot)
     elif test_type == "trajall":
         print("\nRunning 3D trajectory and position/velocity visualization\n")
-        visualize_trajectory(plot_3d=True, plot_2d=True)
+        visualize_trajectory(plot_3d=True, plot_2d=True, live_plot=live_plot)
     elif test_type == "ori":
         print("\nRunning orientation visualization\n")
         visualize_orientation()        
