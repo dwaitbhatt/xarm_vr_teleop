@@ -1,6 +1,6 @@
-# Headset-free teleoperation xArm6 with HTC Vive Controller
+# Headset-free teleoperation of xArm6 with HTC Vive Controller
 
-This repository contains code for VR teleoperation of an xArm6 robot using just an HTC Vive Controller. It uses the OpenVR API to access controller data. The xArm6 robot is controlled using a custom wrapper (not in this repo) over the xArm Python SDK.
+This repository contains code for VR teleoperation of an xArm6 robot using just an HTC Vive Controller. It uses the OpenVR API to access controller data. Joint angles are calculated to match the robot end-effector pose to the controller pose. The joint angles are applied to xArm6 using a [custom wrapper](https://github.com/ExistentialRobotics/erl_xArm) over the xArm Python SDK.
 
 ## Setup
 1. Basic Steam setup for Vive with Ubuntu: SteamVR + OpenVR
