@@ -4,14 +4,25 @@ This repository contains code for VR teleoperation of an xArm6 robot using just 
 
 ## Setup
 1. Basic Steam setup for Vive with Ubuntu: SteamVR
-      - https://github.com/ankurhanda/HTC-Vive-Setup-Ubuntu
+      - Follow https://github.com/ankurhanda/HTC-Vive-Setup-Ubuntu to install SteamVR Beta
       - Do not need to follow entire instructions from here as we are aiming for a headset-free setup
-      - No need to install OpenVR from source as per this page. pip install is enough.  
+      - No need to install OpenVR from source as per this page. `pip install openvr` is enough.  
 
 2. SteamVR setup for headset-free operation
-      - https://github.com/username223/SteamVRNoHeadset
-      - Follow these instructions and modify SteamVR config file every time SteamVR is updated
-      - The steam directory on Linux is ~/.steam/steam or ~/.local/share/Steam
+      - Instructions from https://github.com/username223/SteamVRNoHeadset
+      - Make the following changes when setting up for the first time, and every time SteamVR updates.
+      - The steam directory on Linux is  ~/.local/share/Steam (if that doesn't work, try ~/.steam/steam)
+      - ##### Setting updates
+      - Null Driver File
+      Path: `*SteamDirectory*/steamapps/common/SteamVR/drivers/null/resources/settings/default.vrsettings`.
+      Changes: 
+      a. `"enable": false,` -> `"enable": true,`
+      - SteamVR Config File
+      Path: `*SteamDirectory*/steamapps/common/SteamVR/resources/settings/default.vrsettings`
+      Changes: 
+      a. `"requireHmd": true,` -> `"requireHmd": false,`
+      b. `"forcedDriver": "",` -> `"forcedDriver": "null",` 
+      c. `"activateMultipleDrivers": false,` -> `"activateMultipleDrivers": true,`.
 
 Other relevant setup information:
 * https://www.youtube.com/watch?v=lu7Hwn-5P-k
