@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 # export PYTHONPATH=$PYTHONPATH:/home/erl-tianyu/dwait_local_repo/erl_xArm/
 import sys
 sys.path.append("/home/erl-xarm6/dwait_ws/erl_xArm/")
-from devices.xarm6 import XArmControl
+from xarm6 import XArmControl
 
 
 def flush_controller_data(flush_count=50):
